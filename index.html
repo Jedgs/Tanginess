@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Tanginess Frozen Yogurt</title>
+</head>
+<body>
+
+    <!-- ========================================== -->
+    <!-- CUSTOMER VIEW                              -->
+    <!-- ========================================== -->
+    <main id="customerView">
+        <!-- Customer Header / Nav -->
+        <section>
+            <button type="button" id="switchToAdminButton">Switch Account</button>
+            <h1>Tanginess Frozen Yogurt</h1>
+            <p>Customer Order Creation</p>
+            <button type="button" id="btnCreateOrder">Create Order</button>
+            <button type="button" id="btnOrderStatus">Order Status</button>
+        </section>
+
+        <!-- Customer Order Tab (Build Order + Cart + Checkout) -->
+        <div id="customerOrderTab">
+            <!-- Build Order Section -->
+            <section id="buildOrderSection">
+                <h2>Build Order</h2>
+                
+                <label for="cupSizeContainer"><strong>Cup Size</strong></label>
+                <select id="cupSizeContainer"></select>
+                <p id="toppingReminder" class="toppingReminder"></p>
+                <br>
+
+                <h3><strong>Toppings</strong></h3>
+                <div class="toppingsPanel">
+                    <!-- Plain Froyo -->
+                    <div class="toppingCategory plainCategory">
+                        <div class="toppingSectionHeader">
+                            <h4>Plain Froyo</h4>
+                            <p class="toppingNote">
+                                Choose this only for plain froyo orders. Selecting it will disable all regular toppings.
+                            </p>
+                        </div>
+                        <div id="plainToppingsContainer"></div>
+                    </div>
+
+                    <!-- Sauces -->
+                    <div class="toppingCategory">
+                        <div class="toppingSectionHeader">
+                            <h4>Sauces</h4>
+                            <p class="categoryDescription">Sweet toppings added as syrup or drizzle.</p>
+                        </div>
+                        <div id="saucesToppingsContainer" class="toppingList"></div>
+                    </div>
+
+                    <!-- Fruits -->
+                    <div class="toppingCategory">
+                        <div class="toppingSectionHeader">
+                            <h4>Fruits</h4>
+                            <p class="categoryDescription">Fresh fruit toppings for extra flavor.</p>
+                        </div>
+                        <div id="fruitsToppingsContainer" class="toppingList"></div>
+                    </div>
+
+                    <!-- Crunch -->
+                    <div class="toppingCategory">
+                        <div class="toppingSectionHeader">
+                            <h4>Crunch</h4>
+                            <p class="categoryDescription">Crunchy toppings for texture.</p>
+                        </div>
+                        <div id="crunchsToppingsContainer" class="toppingList"></div>
+                    </div>
+                </div><br><br>
+
+                <!-- Order Quantity -->
+                <div class="orderQuantity">
+                    <span><b>Quantity &nbsp; </b></span>
+                    <button type="button" class="reduceOrderQuantity">-</button>
+                    <span id="quantityProduct">1</span>
+                    <button type="button" class="addOrderQuantity">+</button>
+                </div><br><br>
+                <button type="button" id="btnAddToCart">Add to Cart</button>
+            </section>
+
+            <!-- Cart Section -->
+            <section id="cartSection">
+                <h3>Cart</h3>
+                <p id="cartEmpty">Cart is Empty</p>
+                <div class="cartContainer"></div>
+                <h4><b>Subtotal: Php </b><span id="subtotalCheckout">0</span></h4>
+                <button type="button" id="btnCheckout">Checkout</button>
+            </section>
+
+            <!-- Checkout Summary Section (QR + Table) -->
+            <section id="checkoutSummarySection" style="display:none;">
+                <h2>Order Confirmed</h2>
+                <p class="checkoutMessage">Your order has been placed. Show this QR code to the cashier/staff.</p>
+
+                <div class="checkoutLayout">
+                    <div>
+                        <h4>Scan QR Code</h4>
+                        <div id="qrCodeContainer"></div>
+                        <p id="qrCodeLabel" class="qrLabel"></p>
+                    </div>
+                    <div>
+                        <h4>Order Summary</h4>
+                        <div id="orderSummaryContainer"></div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Customer Status Section (Hidden by default) -->
+        <section id="orderStatusSection" style="display:none;">
+            <h2>Order Status</h2>
+            <p id="orderStatusEmpty">No orders placed yet.</p>
+            <div id="orderStatusContainer"></div>
+        </section>
+    </main>
+
+    <!-- ========================================== -->
+    <!-- ADMIN VIEW (Hidden by default)             -->
+    <!-- ========================================== -->
+    <main id="adminView" style="display:none;">
+        <!-- Admin Header / Nav -->
+        <section>
+            <button type="button" id="switchToCustomerButton">Switch Account</button>
+            <h1>Tanginess Admin</h1>
+            <p>Cashier QR Scanner & POS</p>
+            <button type="button" id="btnAdminWalkInOrder">Walk-in Order</button>
+            <button type="button" id="btnAdminScanner">Scanner</button>
+            <button type="button" id="btnAdminQueue">Order Queue</button>
+            <button type="button" id="btnAdminLogs">Order Logs</button>
+        </section>
+
+        <!-- Admin Tab 1: Walk-in Order -->
+        <div id="adminOrderTab">
+            <section>
+                <h2>Build Walk-in Order</h2>
+                <label for="adminCupSelect"><strong>Cup Size</strong></label>
+                <select id="adminCupSelect"></select>
+                <p id="adminToppingReminder" class="toppingReminder"></p>
+                <br>
+
+                <h3><strong>Toppings</strong></h3>
+                <div class="toppingsPanel">
+                    <div class="toppingCategory plainCategory">
+                        <div class="toppingSectionHeader">
+                            <h4>Plain Froyo</h4>
+                            <p class="toppingNote">
+                                Choose this only for plain froyo orders. Selecting it will disable all regular toppings.
+                            </p>
+                        </div>
+                        <div id="adminPlainToppingsContainer"></div>
+                    </div>
+
+                    <div class="toppingCategory">
+                        <div class="toppingSectionHeader">
+                            <h4>Sauces</h4>
+                            <p class="categoryDescription">Sweet toppings added as syrup or drizzle.</p>
+                        </div>
+                        <div id="adminSaucesContainer" class="toppingList"></div>
+                    </div>
+
+                    <div class="toppingCategory">
+                        <div class="toppingSectionHeader">
+                            <h4>Fruits</h4>
+                            <p class="categoryDescription">Fresh fruit toppings for extra flavor.</p>
+                        </div>
+                        <div id="adminFruitsContainer" class="toppingList"></div>
+                    </div>
+
+                    <div class="toppingCategory">
+                        <div class="toppingSectionHeader">
+                            <h4>Crunch</h4>
+                            <p class="categoryDescription">Crunchy toppings for texture.</p>
+                        </div>
+                        <div id="adminCrunchsContainer" class="toppingList"></div>
+                    </div>
+                </div><br><br>
+
+                <div class="orderQuantity">
+                    <span><b>Quantity &nbsp; </b></span>
+                    <button type="button" id="adminDecreaseQuantityButton">-</button>
+                    <span id="adminQuantityValue">1</span>
+                    <button type="button" id="adminIncreaseQuantityButton">+</button>
+                </div><br><br>
+                <button type="button" id="adminAddToCartButton">Add to Cart</button>
+                <p id="adminOrderMessage" style="color:#049fd3; font-weight: bold;"></p>
+            </section>
+
+            <!-- Walk-in Cart Section -->
+            <section id="adminCartSection">
+                <h3>Walk-in Cart</h3>
+                <p id="adminCartEmpty">Walk-in Cart is Empty</p>
+                <div id="adminCartContainer"></div>
+                <h4><b>Subtotal: Php </b><span id="adminCartSubtotalText">0</span></h4>
+                <br>
+
+                <label for="adminPaymentMethodForOrder"><strong>Payment Method</strong></label><br>
+                <select id="adminPaymentMethodForOrder">
+                    <option value="">Select payment</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Cashless">Cashless</option>
+                </select><br><br>
+                <button type="button" id="adminConfirmWalkInOrderButton">Confirm Order</button>
+            </section>
+        </div>
+
+        <!-- Admin Tab 2: Scanner (Camera + Upload) -->
+        <div id="adminScannerTab" style="display:none;">
+            <section>
+                <h2>Camera Scanner</h2>
+                <p id="scannerStatus">Scan or upload a customer QR code.</p>
+                <div id="reader" style="width: 100%; max-width: 360px; margin: 12px auto;"></div>
+                <button type="button" id="startScannerButton">Start Scanner</button>
+                <button type="button" id="stopScannerButton">Stop Scanner</button>
+            </section>
+
+            <section>
+                <h2>Upload QR Code Image</h2>
+                <input type="file" id="qrImageInput" accept="image/*"><br><br>
+                <button type="button" id="scanImageButton">Scan Uploaded QR</button>
+            </section>
+
+            <section>
+                <h2>Scanned Order Details</h2>
+                <div id="orderDetailsContainer"><p>No scanned order yet.</p></div>
+
+                <div id="scannerConfirmSection" style="display:none;">
+                    <br>
+                    <label for="scannerPaymentMethod"><strong>Payment Method</strong></label><br>
+                    <select id="scannerPaymentMethod">
+                        <option value="">Select payment</option>
+                        <option value="Cash">Cash</option>
+                        <option value="Cashless">Cashless</option>
+                    </select><br><br>
+                    <button type="button" id="btnConfirmScannedOrder">Confirm Order</button>
+                    <p id="scannerConfirmMessage" style="color:#049fd3; font-weight:bold;"></p>
+                </div>
+            </section>
+        </div>
+
+        <!-- Admin Tab 3: Order Queue -->
+        <section id="adminQueueTab" style="display:none;">
+            <h2>POS Order Queue</h2>
+            <p id="nextOrderText" style="font-size: 16px; color: #049fd3;">No next order.</p>
+            <div id="orderQueueContainer"></div>
+        </section>
+
+        <!-- Admin Tab 4: Order Logs -->
+        <section id="adminLogsTab" style="display:none;">
+            <h2>Order Logs</h2>
+            <p id="orderLogsCount" style="font-size: 14px; color: #666;"></p>
+            <div id="orderLogsContainer"><p>No completed orders yet.</p></div>
+        </section>
+    </main>
+
+    <!-- Third-party scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script type="module" src="script.js"></script>
+</body>
+</html>
