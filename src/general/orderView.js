@@ -1,5 +1,5 @@
-import { cupDetails, toppingsDetails } from "./menu.js";
-import { getElement, getToppingById, isSameCategory } from "./helper.js";
+import { getBranchMenu } from "./menu.js";
+import { getElement, getMenuBranch, getToppingById, isSameCategory, escapeHTML } from "./helper.js";
 import { 
     getSelectedCup, 
     setToppingButtonsDisabled, 
@@ -8,7 +8,8 @@ import {
     walkinToppingQueue, 
     enqueueTopping, 
     dequeueTopping, 
-    clearToppingQueue 
+    clearToppingQueue,
+    resetOrderForm
 } from "./addToCart.js";
 
 // Step 1: Ilagay ang lahat ng cup choices sa dropdown
@@ -18,16 +19,20 @@ export function displayCups(selectId = "#cupSizeContainer"){
     const cupSizeContainer = getElement(selectId);
     if(!cupSizeContainer) return;
     cupSizeContainer.innerHTML = "";
+    const cups = getBranchMenu(getMenuBranch(selectId))?.cupDetails || [];
+    let availableCount = 0;
+    for(let i = 0; i < cups.length; i++) if(cups[i].isAvailable) availableCount++;
 
-    if(cupDetails.length === 0){
-        cupSizeContainer.innerHTML = `<option>No Cups Available</option>`;
+    if(availableCount === 0){
+        cupSizeContainer.innerHTML = `<option value="">No Cups Available</option>`;
         return;
     }
 
-    for(let i = 0; i < cupDetails.length; i++){
-        const cup = cupDetails[i];
-        cupSizeContainer.innerHTML += `<option value="${cup.cupId}">
-            ${cup.cupName} - ${cup.includedToppings} Topping(s) - Php ${cup.basePrice}
+    for(let i = 0; i < cups.length; i++){
+        const cup = cups[i];
+        if(!cup.isAvailable) continue;
+        cupSizeContainer.innerHTML += `<option value="${escapeHTML(cup.cupId)}">
+            ${escapeHTML(cup.cupName)} - ${escapeHTML(cup.includedToppings)} Topping(s) - Php ${escapeHTML(cup.basePrice)}
         </option>`;
     }
 };
@@ -40,8 +45,8 @@ export function displayPlainToppings(topping, containerId = "#plainToppingsConta
     if(!container) return;
 
     container.innerHTML += `<label class="toppingsCheckbox">
-        <input type="radio" name="${groupName}" class="plainTopping" data-was-checked="false" value="${topping.toppingId}">
-        <span class="plainToppingText">${topping.toppingName} only</span>
+        <input type="radio" name="${groupName}" class="plainTopping" data-was-checked="false" value="${escapeHTML(topping.toppingId)}">
+        <span class="plainToppingText">${escapeHTML(topping.toppingName)} only</span>
         <span class="toppingPrice">+ PHP <span class="plainToppingPrice">0</span></span>
     </label><br>`;
 };
@@ -55,8 +60,9 @@ export function displayPlainToppingsList(containerId = "#plainToppingsContainer"
     if(!plainToppingsContainer) return;
     plainToppingsContainer.innerHTML = "";
 
-    for(let i = 0; i < toppingsDetails.length; i++){
-        const topping = toppingsDetails[i];
+    const toppings = getBranchMenu(getMenuBranch(containerId))?.toppingsDetails || [];
+    for(let i = 0; i < toppings.length; i++){
+        const topping = toppings[i];
         if(topping.isAvailable && isSameCategory(topping.category, "plain")){
             displayPlainToppings(topping, containerId, groupName);
         }
@@ -86,12 +92,12 @@ export function getContainerByCategory(category, saucesId, fruitsId, crunchsId){
 // Time Complexity: O(1) - constant time single card HTML string creation.
 // Space Complexity: O(1) - constant memory.
 export function displayToppingProduct(topping, container){
-    container.innerHTML += `<div class="products" data-topping-id="${topping.toppingId}">
+    container.innerHTML += `<div class="products" data-topping-id="${escapeHTML(topping.toppingId)}">
         <div class="toppingInfo">
-            <span class="toppingName">${topping.toppingName}</span>
-            <span class="toppingMeta">${topping.category}</span>
+            <span class="toppingName">${escapeHTML(topping.toppingName)}</span>
+            <span class="toppingMeta">${escapeHTML(topping.category)}</span>
         </div>
-        <span class="toppingPrice">+ Php ${topping.extraPrice}</span>
+        <span class="toppingPrice">+ Php ${escapeHTML(topping.extraPrice)}</span>
         <div class="quantityControls">
             <button class="reduceToppingsQuantity quantityButton" type="button">-</button>
             <span class="quantity">0</span>
@@ -115,13 +121,21 @@ export function displayToppings(saucesId = "#saucesToppingsContainer", fruitsId 
     fruitsContainer.innerHTML = "";
     crunchsContainer.innerHTML = "";
 
-    if(toppingsDetails.length === 0){
+    const toppings = getBranchMenu(getMenuBranch(saucesId))?.toppingsDetails || [];
+    let hasRegularTopping = false;
+    for(let i = 0; i < toppings.length; i++){
+        if(toppings[i].isAvailable && !isSameCategory(toppings[i].category, "plain")){
+            hasRegularTopping = true;
+            break;
+        }
+    }
+    if(!hasRegularTopping){
         saucesContainer.innerHTML = "<p>No Toppings Available</p>";
         return;
     }
 
-    for(let i = 0; i < toppingsDetails.length; i++){
-        const topping = toppingsDetails[i];
+    for(let i = 0; i < toppings.length; i++){
+        const topping = toppings[i];
         if(topping.isAvailable && !isSameCategory(topping.category, "plain")){
             const container = getContainerByCategory(topping.category, saucesId, fruitsId, crunchsId);
             if(container){
@@ -145,7 +159,7 @@ export function updatePlainToppingPrice(selectId = "#cupSizeContainer", scopeSel
     const radios = scope.querySelectorAll(".plainTopping");
     for(let radio of radios){
         
-        const topping = getToppingById(radio.value);
+        const topping = getToppingById(radio.value, getMenuBranch(selectId));
         const priceText = radio.parentElement.querySelector(".plainToppingPrice");
 
         if(topping && topping.priceList && priceText){
@@ -164,7 +178,11 @@ export function updateToppingReminder(selectId = "#cupSizeContainer", reminderId
     const selectedCup = getSelectedCup(selectId);
     const reminderText = getElement(reminderId);
 
-    if(!selectedCup || !reminderText) return;
+    if(!reminderText) return;
+    if(!selectedCup){
+        reminderText.textContent = "No available cups for this branch.";
+        return;
+    }
 
     reminderText.innerHTML =
         "Included: <b>" + selectedCup.includedToppings + " topping(s) free</b> &nbsp;|&nbsp; " +
@@ -313,25 +331,39 @@ export function plainFroyoClickListener(scopeSelector = "#buildOrderSection", qu
 
 // Initializer for Customer Order View
 export function initCustomerOrderView(){
-    displayCups("#cupSizeContainer");
-    displayPlainToppingsList("#plainToppingsContainer", "customerPlain");
-    displayToppings("#saucesToppingsContainer", "#fruitsToppingsContainer", "#crunchsToppingsContainer");
+    refreshCustomerOrderMenu();
     setupCupSizeChangeListener("#cupSizeContainer", "#toppingReminder", "#buildOrderSection", customerToppingQueue);
-    toppingsQuantity("#buildOrderSection", "#cupSizeContainer", customerToppingQueue);
     productQuantity(".reduceOrderQuantity", ".addOrderQuantity", "#quantityProduct");
-    plainFroyoClickListener("#buildOrderSection", customerToppingQueue);
 };
 
 // Initializer for Admin Walk-in Order View
 export function initAdminOrderView(){
+    refreshAdminOrderMenu();
+    setupCupSizeChangeListener("#adminCupSelect", "#adminToppingReminder", "#adminOrderTab", walkinToppingQueue);
+    productQuantity("#adminDecreaseQuantityButton", "#adminIncreaseQuantityButton", "#adminQuantityValue");
+};
+
+export function refreshCustomerOrderMenu(){
+    resetOrderForm(true);
+    displayCups("#cupSizeContainer");
+    displayPlainToppingsList("#plainToppingsContainer", "customerPlain");
+    displayToppings("#saucesToppingsContainer", "#fruitsToppingsContainer", "#crunchsToppingsContainer");
+    updatePlainToppingPrice("#cupSizeContainer", "#buildOrderSection");
+    updateToppingReminder("#cupSizeContainer", "#toppingReminder");
+    toppingsQuantity("#buildOrderSection", "#cupSizeContainer", customerToppingQueue);
+    plainFroyoClickListener("#buildOrderSection", customerToppingQueue);
+}
+
+export function refreshAdminOrderMenu(){
+    resetOrderForm(false);
     displayCups("#adminCupSelect");
     displayPlainToppingsList("#adminPlainToppingsContainer", "adminPlain");
     displayToppings("#adminSaucesContainer", "#adminFruitsContainer", "#adminCrunchsContainer");
-    setupCupSizeChangeListener("#adminCupSelect", "#adminToppingReminder", "#adminOrderTab", walkinToppingQueue);
+    updatePlainToppingPrice("#adminCupSelect", "#adminOrderTab");
+    updateToppingReminder("#adminCupSelect", "#adminToppingReminder");
     toppingsQuantity("#adminOrderTab", "#adminCupSelect", walkinToppingQueue);
-    productQuantity("#adminDecreaseQuantityButton", "#adminIncreaseQuantityButton", "#adminQuantityValue");
     plainFroyoClickListener("#adminOrderTab", walkinToppingQueue);
-};
+}
 
 // General function that export all of function to initialize those logics
 // It is use when the page loaded 

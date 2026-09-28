@@ -1,149 +1,141 @@
-import { getElement, formatToppings } from "../general/helper.js";
-import { addOrderLog, renderOrderLogs } from "./orderLogs.js";
+import { getElement, formatToppings, escapeHTML } from "../general/helper.js";
+import { orderQueueDetails, orderLogsDetails, getActiveCashierBranch, getOrderBranch, getOrderType } from "../general/orderStore.js";
+import { renderOrderStatus } from "../customer/orderStatus.js";
+import { renderOrderLogs } from "./orderLogs.js";
+import { isCashlessPaymentMethod } from "../general/demoPayment.js";
+import { indexOfValue, removeItemAt } from "../general/arrayOps.js";
 
-// Array store para sa mga order na kasalukuyang nasa queue ng paghahanda (POS Order Queue).
-export const orderQueueDetails = [];
+export { orderQueueDetails } from "../general/orderStore.js";
 
-// Nagdadagdag ng order sa queue (DSA manual index assignment nang walang .push()).
-// Time Complexity: O(1) - direct index assignment sa dulo ng array nang walang array resizing method.
-// Space Complexity: O(1) - walang karagdagang memory allocation bukod sa pag-store ng order reference.
-export function addQueueOrder(order){
-    orderQueueDetails[orderQueueDetails.length] = order;
+const expandedQueueOrders = [];
+
+const nextAction = {
+    "Pending Confirmation": ["Confirm Order", "Confirmed"],
+    "Confirmed": ["Start Preparing", "Preparing"],
+    "Preparing": ["Mark Ready", null],
+    "Ready for Takeout": ["Completed", "Completed"],
+    "Ready to Serve": ["Completed", "Completed"],
+    "Ready for Pickup": ["Completed", "Completed"],
+    "Ready for Delivery": ["Completed", "Completed"]
+};
+
+function hasConfirmedPayment(order){
+    return order.paymentStatus === "Paid" || order.paymentStatus === "Paid (Demo)" || order.paymentStatus === "Paid (Cashier)";
 }
 
-// Tinatanggal ang unang order sa queue (DSA manual shift loop nang walang .shift()).
-// Time Complexity: O(n) - kung saan n ay bilang ng orders sa queue; manu-manong inililipat ang bawat element nang isang puwesto pakaliwa (shift loop).
-// Space Complexity: O(1) - in-place shifting, walang karagdagang array allocation.
-export function removeFirstQueueOrder(){
-    if(orderQueueDetails.length === 0) return null;
-    const first = orderQueueDetails[0];
-
-    for(let i = 0; i < orderQueueDetails.length - 1; i++){
-        orderQueueDetails[i] = orderQueueDetails[i + 1];
+function getQueueAction(order){
+    if(hasConfirmedPayment(order)) return nextAction[order.orderStatus];
+    if(order.paymentStatus === "Pending Payment" && isCashlessPaymentMethod(order.paymentMethod)){
+        return ["Confirm Demo Payment", "Demo Payment"];
     }
-    orderQueueDetails.length = orderQueueDetails.length - 1;
-    return first;
+    return null;
 }
 
-// Kinukuha ang total add-ons ng isang cart item (extra toppings + premium + plain froyo).
-// Time Complexity: O(1) - direct field lookup at addition arithmetic operation.
-// Space Complexity: O(1) - constant memory para sa numeric total.
-export function getAddOnTotal(item){
-    return item.extraToppingTotal + item.premiumToppingTotal + item.plainFroyoAddOn;
-}
-
-// Bumabasa sa mode of payment o payment status ng order.
-// Time Complexity: O(1) - direct property check at string return.
-// Space Complexity: O(1) - constant memory.
-function getPaymentText(order){
-    if(order.paymentMethod && order.paymentMethod !== ""){
-        return order.paymentMethod;
-    }
-    return order.paymentStatus;
-}
-
-// Bumubuo ng table rows katulad ng sa Tanginess module (queueView.js).
-// Gumagamit ng rowspan para magkakasama ang items ng iisang order.
-// Time Complexity: O(n) - kung saan n ay bilang ng items sa order; ini-iterate ang bawat item sa loob ng order para gumawa ng table rows.
-// Space Complexity: O(n) - lumilikha ng HTML string na proporsyonal sa dami ng items.
-function buildQueueRows(order, index){
-    let html = "";
-    const rowCount = order.orderedItems.length;
-    const disabled = index === 0 ? "" : "disabled";
-
-    for(let itemIndex = 0; itemIndex < order.orderedItems.length; itemIndex++){
-        const item = order.orderedItems[itemIndex];
-        html += "<tr>";
-
-        // Unang linya ng order: ipakita ang No. at Order ID
-        if(itemIndex === 0){
-            html += "<td rowspan=\"" + rowCount + "\">" + (index + 1) + "</td>";
-            html += "<td rowspan=\"" + rowCount + "\"><b>" + order.orderId + "</b></td>";
-        }
-
-        // Bawat cup item sa loob ng order
-        html += "<td>" + item.cupDetails.cupName + "</td>";
-        html += "<td>" + item.quantity + "</td>";
-        html += "<td>" + formatToppings(item.selectedToppings) + "</td>";
-        html += "<td>Php " + getAddOnTotal(item) + "</td>";
-        html += "<td>Php " + item.lineTotal + "</td>";
-
-        // Unang linya ng order: ipakita ang Payment, Date, Status, at Action
-        if(itemIndex === 0){
-            html += "<td rowspan=\"" + rowCount + "\">" + getPaymentText(order) + "</td>";
-            html += "<td rowspan=\"" + rowCount + "\">" + order.createdAt + "</td>";
-            html += "<td rowspan=\"" + rowCount + "\"><span class=\"statusBadge\">" + order.orderStatus + "</span></td>";
-            html += "<td rowspan=\"" + rowCount + "\"><button type=\"button\" class=\"btnCompleteOrder\" data-complete=\"" + order.orderId + "\" " + disabled + ">Completed</button></td>";
-        }
-
-        html += "</tr>";
-    }
-
-    return html;
-}
-
-// Bumubuo ng kumpletong HTML table para sa Order Queue.
-// Time Complexity: O(n^2) - nested loop sa pag-ikot sa lahat ng orders at bawat item sa queue.
-// Space Complexity: O(n) - lumilikha ng buong table HTML string na naglalaman ng lahat ng orders.
 export function buildQueueTable(queue){
-    let html = "<table class=\"orderSummaryTable queueTable\">";
-    html += "<thead><tr><th>No.</th><th>Order ID</th><th>Cup Size</th><th>Quantity</th><th>Toppings</th><th>Add-ons</th><th>Total</th><th>Mode of Payment</th><th>Order Date</th><th>Status</th><th>Action</th></tr></thead><tbody>";
+    let html = "<div class=\"queueTableWrap\"><table class=\"orderSummaryTable queueTable\">";
+    html += "<thead><tr><th>No.</th><th>Order ID</th><th>Cup Size</th><th>Quantity</th><th>Toppings</th><th>Add-ons</th><th>Total</th><th>Payment</th><th>Status</th><th>Action</th></tr></thead><tbody>";
 
-    for(let i = 0; i < queue.length; i++){
-        html += buildQueueRows(queue[i], i);
+    for(let index = 0; index < queue.length; index++){
+        const order = queue[index];
+        const rowCount = order.orderedItems.length;
+        const action = getQueueAction(order);
+        const detailsId = `queue-details-${index}`;
+        const isOpen = indexOfValue(expandedQueueOrders, order.orderId) >= 0;
+        for(let itemIndex = 0; itemIndex < rowCount; itemIndex++){
+            const item = order.orderedItems[itemIndex];
+            const addOns = (item.extraToppingTotal + item.premiumToppingTotal + item.plainFroyoAddOn) * item.quantity;
+            html += "<tr>";
+            if(itemIndex === 0){
+                html += "<td rowspan=\"" + rowCount + "\">" + (index + 1) + "</td>";
+                html += `<td rowspan="${rowCount}"><button type="button" class="orderDetailsToggle" data-queue-details="${escapeHTML(order.orderId)}" aria-expanded="${isOpen}" aria-controls="${detailsId}" aria-label="${isOpen ? "Hide" : "Show"} details for ${escapeHTML(order.orderId)}">${isOpen ? "&#9662;" : "&#9656;"}</button> <b>${escapeHTML(order.orderId)}</b></td>`;
+            }
+            html += "<td>" + escapeHTML(item.cupDetails.cupName) + "</td>";
+            html += "<td>" + escapeHTML(item.quantity) + "</td>";
+            html += "<td>" + formatToppings(item.selectedToppings) + "</td>";
+            html += "<td>Php " + escapeHTML(addOns) + "</td>";
+            html += "<td>Php " + escapeHTML(item.lineTotal) + "</td>";
+            if(itemIndex === 0){
+                html += "<td rowspan=\"" + rowCount + "\">" + escapeHTML(order.paymentMethod) + "<br><small>" + escapeHTML(order.paymentStatus) + "</small></td>";
+                html += "<td rowspan=\"" + rowCount + "\"><span class=\"statusBadge\">" + escapeHTML(order.orderStatus) + "</span></td>";
+                html += "<td rowspan=\"" + rowCount + "\">";
+                if(index > 0) html += "<span class=\"queueWaiting\">Waiting in queue</span>";
+                else if(action) html += "<button type=\"button\" class=\"queueAction\" data-order-id=\"" + escapeHTML(order.orderId) + "\">" + action[0] + "</button>";
+                else if(!hasConfirmedPayment(order)) html += "Awaiting payment";
+                html += "</td>";
+            }
+            html += "</tr>";
+        }
+        html += `<tr id="${detailsId}" class="orderDetailsRow"${isOpen ? "" : " hidden"}><td colspan="10"><dl class="orderDetailsContent"><div class="orderDetail"><dt>Order type</dt><dd>${escapeHTML(getOrderType(order))}</dd></div><div class="orderDetail"><dt>Order date</dt><dd>${escapeHTML(order.createdAt)}</dd></div></dl></td></tr>`;
     }
 
-    html += "</tbody></table>";
-    return html;
+    return html + "</tbody></table></div>";
 }
 
-// Nire-render ang buong POS Order Queue sa loob ng #orderQueueContainer.
-// Time Complexity: O(n^2) - tinatawag ang buildQueueTable O(n^2) at i-in-inject sa DOM.
-// Space Complexity: O(n) - nag-iimbak ng table HTML string bago i-render.
 export function renderOrderQueue(){
     const container = getElement("#orderQueueContainer");
     const nextOrderText = getElement("#nextOrderText");
-
     if(!container) return;
-
-    if(orderQueueDetails.length === 0){
+    const branchQueue = [];
+    for(let i = 0; i < orderQueueDetails.length; i++){
+        const order = orderQueueDetails[i];
+        if(getOrderBranch(order) === getActiveCashierBranch()) branchQueue[branchQueue.length] = order;
+    }
+    if(branchQueue.length === 0){
         container.innerHTML = "<p>No active queue yet.</p>";
-        if(nextOrderText){
-            nextOrderText.innerHTML = "No next order.";
-        }
+        if(nextOrderText) nextOrderText.textContent = "No next order.";
         return;
     }
-
-    if(nextOrderText){
-        nextOrderText.innerHTML = "<b>Next Order:</b> " + orderQueueDetails[0].orderId;
-    }
-
-    container.innerHTML = buildQueueTable(orderQueueDetails);
+    if(nextOrderText) nextOrderText.textContent = "Next Order: " + branchQueue[0].orderId;
+    container.innerHTML = buildQueueTable(branchQueue);
 }
 
-// Setup ng listener para sa "Completed" button sa table.
-// Kapag natapos ang order, inaalis ito sa active queue (FIFO queue principle).
-// Time Complexity: O(1) para sa listener setup, at O(n^2) kapag na-click ang completed button dahil sa renderOrderQueue.
-// Space Complexity: O(1) - event callback reference memory.
 export function initOrderQueue(){
     const container = getElement("#orderQueueContainer");
     if(!container) return;
+    container.addEventListener("click", event => {
+        const toggle = event.target.closest("button[data-queue-details]");
+        if(toggle && container.contains(toggle)){
+            const orderId = toggle.dataset.queueDetails;
+            const expandedIndex = indexOfValue(expandedQueueOrders, orderId);
+            if(expandedIndex >= 0) removeItemAt(expandedQueueOrders, expandedIndex);
+            else expandedQueueOrders[expandedQueueOrders.length] = orderId;
+            renderOrderQueue();
+            return;
+        }
+        const button = event.target.closest("button[data-order-id]");
+        if(!button || !container.contains(button)) return;
+        // FIFO per branch: only the first active order may advance.
+        let index = -1;
+        for(let i = 0; i < orderQueueDetails.length; i++){
+            const candidate = orderQueueDetails[i];
+            if(getOrderBranch(candidate) === getActiveCashierBranch()){
+                index = i;
+                break;
+            }
+        }
+        if(index < 0 || orderQueueDetails[index].orderId !== button.dataset.orderId) return;
+        const order = orderQueueDetails[index];
+        const action = getQueueAction(order);
+        if(!action) return;
 
-    container.addEventListener("click", (event)=>{
-        const completeId = event.target.getAttribute("data-complete");
-        if(completeId === null || orderQueueDetails.length === 0) return;
+        if(action[1] === "Demo Payment"){
+            order.paymentStatus = "Paid (Demo)";
+            order.paymentConfirmedAt = new Date().toISOString();
+            order.paymentVerification = "demo-confirmation";
+            renderOrderQueue();
+            renderOrderStatus();
+            return;
+        }
 
-        // Markahan bilang Completed bago alisin
-        orderQueueDetails[0].orderStatus = "Completed";
-
-        // Ilipat sa Order Logs bago alisin sa queue
-        addOrderLog(orderQueueDetails[0]);
-
-        removeFirstQueueOrder();
+        const isCompleted = action[1] === "Completed";
+        order.orderStatus = action[1] || (getOrderType(order) === "Dine In" ? "Ready to Serve" : "Ready for Takeout");
+        if(isCompleted){
+            removeItemAt(orderQueueDetails, index);
+            orderLogsDetails[orderLogsDetails.length] = order;
+        }
         renderOrderQueue();
-        renderOrderLogs();
+        renderOrderStatus();
+        if(isCompleted) renderOrderLogs();
     });
-
     renderOrderQueue();
 }
-

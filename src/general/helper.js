@@ -1,4 +1,5 @@
-import { cupDetails, toppingsDetails } from "./menu.js";
+import { getBranchMenu } from "./menu.js";
+import { getActiveCashierBranch } from "./orderStore.js";
 
 // Reusable shortcut para hindi paulit-ulit ang document.querySelector
 // Time Complexity: O(1)
@@ -7,12 +8,27 @@ export function getElement(selector){
     return document.querySelector(selector);
 }
 
+export function getMenuBranch(context = "customer"){
+    let isAdmin = context === "walkin";
+    for(let i = 0; i <= context.length - 5 && !isAdmin; i++){
+        if(context[i] === "a" && context[i + 1] === "d" && context[i + 2] === "m" &&
+            context[i + 3] === "i" && context[i + 4] === "n") isAdmin = true;
+    }
+    return isAdmin ? getActiveCashierBranch() : getElement("#customerBranch")?.value || "";
+}
+
+export function escapeHTML(value){
+    return String(value ?? "").replace(/[&<>"']/g, character => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    })[character]);
+}
+
 // Linear search: hinahanap ang cup object gamit ang cupId galing sa dropdown o cart.
 // Time Complexity: O(n) - kung saan n ay bilang ng cups sa menu. worst case, iikutin lahat ng items.
 // Space Complexity: O(1) - auxiliary space; pointer at comparison lamang ang ginagamit. Then return value if condition meet.
-export function getCupById(cupId){
-    for(let cup of cupDetails){
-        if(cup.cupId === cupId){
+export function getCupById(cupId, branch){
+    for(let cup of getBranchMenu(branch)?.cupDetails || []){
+        if(cup.cupId === cupId && cup.isAvailable){
             return cup;
         }
     }
@@ -22,10 +38,11 @@ export function getCupById(cupId){
 // Linear search: hinahanap ang topping object gamit ang toppingId galing sa DOM.
 // Time Complexity: O(n) - kung saan n ay bilang ng toppings sa menu (linear traversal).
 // Space Complexity: O(1) - auxiliary space; walang karagdagang memory structures na ginagawa.
-export function getToppingById(toppingId){
-    for(let i = 0; i < toppingsDetails.length; i++){
-        if(toppingsDetails[i].toppingId === toppingId){
-            return toppingsDetails[i];
+export function getToppingById(toppingId, branch){
+    const toppings = getBranchMenu(branch)?.toppingsDetails || [];
+    for(let i = 0; i < toppings.length; i++){
+        if(toppings[i].toppingId === toppingId && toppings[i].isAvailable){
+            return toppings[i];
         }
     }
     return null;
@@ -54,9 +71,9 @@ export function formatToppings(selectedToppings){
         const topping = selectedToppings[i];
 
         if(topping.quantity >= 2){
-            text += topping.toppingName + " (" + topping.quantity + ")";
+            text += escapeHTML(topping.toppingName) + " (" + escapeHTML(topping.quantity) + ")";
         } else {
-            text += topping.toppingName;
+            text += escapeHTML(topping.toppingName);
         }
 
         if(i < selectedToppings.length - 1){
@@ -82,18 +99,18 @@ export function buildOrderSummaryHTML(order){
 
     for(let i = 0; i < order.orderedItems.length; i++){
         const item = order.orderedItems[i];
-        const addOnTotal = item.extraToppingTotal + item.premiumToppingTotal + item.plainFroyoAddOn;
+        const addOnTotal = (item.extraToppingTotal + item.premiumToppingTotal + item.plainFroyoAddOn) * item.quantity;
 
         html += "<tr>";
-        html += "<td>" + item.cupDetails.cupName + "</td>";
-        html += "<td>" + item.quantity + "</td>";
+        html += "<td>" + escapeHTML(item.cupDetails.cupName) + "</td>";
+        html += "<td>" + escapeHTML(item.quantity) + "</td>";
         html += "<td>" + formatToppings(item.selectedToppings) + "</td>";
-        html += "<td>Php " + addOnTotal + "</td>";
-        html += "<td>Php " + item.lineTotal + "</td>";
+        html += "<td>Php " + escapeHTML(addOnTotal) + "</td>";
+        html += "<td>Php " + escapeHTML(item.lineTotal) + "</td>";
         html += "</tr>";
     }
 
     html += "</table>";
-    html += "<p class=\"orderTotal\"><b>Order Total: Php " + order.orderTotal + "</b></p>";
+    html += "<p class=\"orderTotal\"><b>Order Total: Php " + escapeHTML(order.orderTotal) + "</b></p>";
     return html;
 }

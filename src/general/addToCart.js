@@ -1,4 +1,5 @@
-import { getElement, getCupById, getToppingById, formatToppings } from "./helper.js";
+import { getElement, getMenuBranch, getCupById, getToppingById, formatToppings, escapeHTML } from "./helper.js";
+import { removeItemAt } from "./arrayOps.js";
 
 // Stores para sa magkahiwalay na customer cart at walk-in cart
 export const customerCartDetails = [];
@@ -63,7 +64,7 @@ export function generateCartId(prefix, counter){
 export function getSelectedCup(selectId = "#cupSizeContainer"){
     const cupContainer = getElement(selectId);
     if(!cupContainer) return null;
-    return getCupById(cupContainer.value);
+    return getCupById(cupContainer.value, getMenuBranch(selectId));
 }
 
 
@@ -74,7 +75,7 @@ export function getSelectedPlainTopping(selector = ".plainTopping"){
     const radios = document.querySelectorAll(selector);
     for(let radio of radios){
         if(radio.checked){
-            return getToppingById(radio.value);
+            return getToppingById(radio.value, getMenuBranch(selector));
         }
     }
     return null;
@@ -118,6 +119,7 @@ export function computeIncludedAndExtra(quantity, includedCount, usedIncluded){
 // Space Complexity: O(n) - lumilikha ng array na nag-iimbak ng mga napiling toppings.
 export function getSelectedToppings(productsSelector = ".products", selectedCup = null, queue = null){
     const selectedToppings = [];
+    const branch = getMenuBranch(productsSelector);
 
     // Kung may ibinigay na queue, gamitin yung FIFO order nito para sa included vs extra
     if(queue && queue.length > 0){
@@ -145,7 +147,7 @@ export function getSelectedToppings(productsSelector = ".products", selectedCup 
                 }
                 existingItem.isIncluded = (existingItem.extraQuantity === 0);
             } else {
-                const topping = getToppingById(toppingId);
+                const topping = getToppingById(toppingId, branch);
                 if(topping){
                     const incQty = isIncludedUnit ? 1 : 0;
                     const extQty = isIncludedUnit ? 0 : 1;
@@ -178,7 +180,7 @@ export function getSelectedToppings(productsSelector = ".products", selectedCup 
         const quantity = Number(quantityText.innerHTML);
 
         if(quantity > 0){
-            const topping = getToppingById(product.dataset.toppingId);
+            const topping = getToppingById(product.dataset.toppingId, branch);
 
             if(topping){
                 const includedCount = selectedCup ? selectedCup.includedToppings : 0;
@@ -302,7 +304,7 @@ export function resetOrderForm(isCustomer = true){
     resetPlainTopping(scopeSelector, radioSelector);
 }
 
-// Manual reset ng laman ng cart (DSA length decrementation nang walang .splice() o .pop()).
+// Manual reset ng laman ng cart sa pamamagitan ng length decrementation.
 // Time Complexity: O(n) - kung saan n ay bilang ng cart items na aalisin pabalik sa zero.
 // Space Complexity: O(1) - in-place array truncation.
 export function clearCartArray(cartList){
@@ -321,6 +323,50 @@ export function clearCustomerCart(){
 // Space Complexity: O(1) - in-place.
 export function clearWalkinCart(){
     clearCartArray(walkinCartDetails);
+}
+
+export function removeCartItem(cartList, index){
+    return removeItemAt(cartList, index);
+}
+
+// Parehong cup at toppings (kasama ang dami at presyo ng add-ons) ay isang cart row lang.
+function hasSameConfiguration(item, newItem){
+    if(item.cupDetails.cupId !== newItem.cupDetails.cupId ||
+        (item.plainToppingId || "") !== (newItem.plainToppingId || "") ||
+        item.plainFroyoAddOn !== newItem.plainFroyoAddOn ||
+        item.extraToppingTotal !== newItem.extraToppingTotal ||
+        item.premiumToppingTotal !== newItem.premiumToppingTotal ||
+        item.selectedToppings.length !== newItem.selectedToppings.length) return false;
+
+    for(let i = 0; i < newItem.selectedToppings.length; i++){
+        const topping = newItem.selectedToppings[i];
+        let found = false;
+        for(let j = 0; j < item.selectedToppings.length; j++){
+            const existing = item.selectedToppings[j];
+            if(existing.toppingId === topping.toppingId &&
+                existing.quantity === topping.quantity &&
+                existing.includedQuantity === topping.includedQuantity &&
+                existing.extraQuantity === topping.extraQuantity){
+                found = true;
+                break;
+            }
+        }
+        if(!found) return false;
+    }
+    return true;
+}
+
+export function addOrMergeCartItem(cartList, newItem){
+    for(let i = 0; i < cartList.length; i++){
+        const item = cartList[i];
+        if(hasSameConfiguration(item, newItem)){
+            item.quantity += newItem.quantity;
+            item.lineTotal += newItem.lineTotal;
+            return item;
+        }
+    }
+    cartList[cartList.length] = newItem;
+    return newItem;
 }
 
 // Reusable function sa pag-render ng cart items sa UI.
@@ -353,12 +399,13 @@ export function renderCartItems(cartList, containerSelector, subtotalSelector, e
         }
 
         container.innerHTML += `<div>
-            <h3>${item.cupDetails.cupName} x ${item.quantity}</h3>
+            <h3>${escapeHTML(item.cupDetails.cupName)} x ${item.quantity}</h3>
             <p>Toppings: <span>${formatToppings(item.selectedToppings)}</span></p>
-            <p>Plain Add-On: Php ${item.plainFroyoAddOn}</p>
-            <p>Extra Toppings: Php ${item.extraToppingTotal}</p>
-            <p>Premium Surcharge: Php ${item.premiumToppingTotal}</p>
+            <p>Plain Add-On: Php ${item.plainFroyoAddOn * item.quantity}</p>
+            <p>Extra Toppings: Php ${item.extraToppingTotal * item.quantity}</p>
+            <p>Premium Surcharge: Php ${item.premiumToppingTotal * item.quantity}</p>
             <p><b>Line Total: Php ${item.lineTotal}</b></p>
+            <button type="button" class="removeCartItem" data-remove-cart="${i}" aria-label="Remove ${escapeHTML(item.cupDetails.cupName)} from cart">Remove</button>
         </div>`;
     }
 
@@ -391,6 +438,11 @@ export function executeAddToCart(type = "customer"){
     const messageEl = isCustomer ? null : getElement("#adminOrderMessage");
 
     const selectedCup = getSelectedCup(cupSelectId);
+    if(!selectedCup){
+        if(messageEl) messageEl.textContent = "Select an available cup for this branch.";
+        else alert("Select an available cup for this branch.");
+        return;
+    }
     const selectedPlainTopping = getSelectedPlainTopping(radioSelector);
     const targetQueue = isCustomer ? customerToppingQueue : walkinToppingQueue;
     const selectedToppings = selectedPlainTopping ? [] : getSelectedToppings(productsSelector, selectedCup, targetQueue);
@@ -416,10 +468,8 @@ export function executeAddToCart(type = "customer"){
     const quantity = Number(getElement(qtySelector).innerHTML);
     const lineTotal = (selectedCup.basePrice + plainFroyoAddOn + extraToppingTotal + premiumToppingTotal) * quantity;
 
-    const cartId = generateCartId(prefix, isCustomer ? lastCustomerCartId++ : lastWalkinCartId++);
-
-    targetCart[targetCart.length] = {
-        cartItemId: cartId,
+    const newItem = {
+        cartItemId: generateCartId(prefix, isCustomer ? lastCustomerCartId++ : lastWalkinCartId++),
         cupDetails: {
             cupId: selectedCup.cupId,
             cupName: selectedCup.cupName,
@@ -430,10 +480,12 @@ export function executeAddToCart(type = "customer"){
         extraToppingTotal: extraToppingTotal,
         lineTotal: lineTotal,
         plainFroyoAddOn: plainFroyoAddOn,
+        plainToppingId: selectedPlainTopping?.toppingId || "",
         premiumToppingTotal: premiumToppingTotal,
         quantity: quantity,
         selectedToppings: selectedToppings
     };
+    addOrMergeCartItem(targetCart, newItem);
 
     if(isCustomer){
         renderCustomerCart();

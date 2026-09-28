@@ -1,11 +1,12 @@
-export const cupDetails = [
+const baseCupDetails = [
     {
         cupId: "CUP-001",
         cupName: "Mini",
         cupType: "Paper Cup",
         includedToppings: 1,
         maximumToppingQuantity: 4,
-        basePrice: 38
+        basePrice: 38,
+        isAvailable: true
     },
     {
         cupId: "CUP-002",
@@ -13,7 +14,8 @@ export const cupDetails = [
         cupType: "Paper Cup",
         includedToppings: 2,
         maximumToppingQuantity: 6,
-        basePrice: 98
+        basePrice: 98,
+        isAvailable: true
     },
     {
         cupId: "CUP-003",
@@ -21,7 +23,8 @@ export const cupDetails = [
         cupType: "Paper Cup",
         includedToppings: 3,
         maximumToppingQuantity: 8,
-        basePrice: 128
+        basePrice: 128,
+        isAvailable: true
     },
     {
         cupId: "CUP-004",
@@ -29,7 +32,8 @@ export const cupDetails = [
         cupType: "Plastic Cup",
         includedToppings: 4,
         maximumToppingQuantity: 8,
-        basePrice: 138
+        basePrice: 138,
+        isAvailable: true
     },
     {
         cupId: "CUP-005",
@@ -37,7 +41,8 @@ export const cupDetails = [
         cupType: "Plastic Cup",
         includedToppings: 5,
         maximumToppingQuantity: 10,
-        basePrice: 168
+        basePrice: 168,
+        isAvailable: true
     },
     {
         cupId: "CUP-006",
@@ -45,11 +50,12 @@ export const cupDetails = [
         cupType: "Plastic Cup",
         includedToppings: 6,
         maximumToppingQuantity: 10,
-        basePrice: 198
+        basePrice: 198,
+        isAvailable: true
     }
 ];
 
-export const toppingsDetails = [
+const baseToppingsDetails = [
     {
         toppingId: "TOP-001",
         toppingName: "Strawberry",
@@ -152,3 +158,56 @@ export const toppingsDetails = [
         isAvailable: true
     }
 ];
+
+// Main menu container. Bawat branch ay may sariling arrays at objects para
+// puwedeng baguhin ang presyo at availability nang hindi naaapektuhan ang kabila.
+function createBranchMenu(){
+    const cups = [];
+    const toppings = [];
+    for(let i = 0; i < baseCupDetails.length; i++){
+        cups[cups.length] = { ...baseCupDetails[i] };
+    }
+    for(let i = 0; i < baseToppingsDetails.length; i++){
+        const topping = baseToppingsDetails[i];
+        const copy = { ...topping };
+        if(topping.priceList) copy.priceList = { ...topping.priceList };
+        toppings[toppings.length] = copy;
+    }
+    return { cupDetails: cups, toppingsDetails: toppings };
+}
+
+export const menuDetails = {
+    Malolos: createBranchMenu(),
+    Pulilan: createBranchMenu()
+};
+
+export function getBranchMenu(branch){
+    return menuDetails[branch] || null;
+}
+
+export function isCartItemAvailable(branch, item){
+    const menu = getBranchMenu(branch);
+    if(!menu) return false;
+    let cupAvailable = false;
+    for(let i = 0; i < menu.cupDetails.length; i++){
+        const cup = menu.cupDetails[i];
+        if(cup.cupId === item.cupDetails.cupId && cup.isAvailable){
+            cupAvailable = true;
+            break;
+        }
+    }
+    if(!cupAvailable) return false;
+
+    if(item.plainToppingId && !hasAvailableTopping(menu.toppingsDetails, item.plainToppingId)) return false;
+    for(let i = 0; i < item.selectedToppings.length; i++){
+        if(!hasAvailableTopping(menu.toppingsDetails, item.selectedToppings[i].toppingId)) return false;
+    }
+    return true;
+}
+
+function hasAvailableTopping(toppings, toppingId){
+    for(let i = 0; i < toppings.length; i++){
+        if(toppings[i].toppingId === toppingId && toppings[i].isAvailable) return true;
+    }
+    return false;
+}

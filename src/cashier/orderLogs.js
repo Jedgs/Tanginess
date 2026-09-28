@@ -1,13 +1,17 @@
-import { getElement, formatToppings } from "../general/helper.js";
+import { getElement, formatToppings, escapeHTML } from "../general/helper.js";
+import { orderLogsDetails, getActiveCashierBranch, getOrderBranch, getOrderType } from "../general/orderStore.js";
+import { indexOfValue, removeItemAt } from "../general/arrayOps.js";
 
-// Array store para sa mga order na natapos na (Completed) mula sa Order Queue.
+// Array store para sa completed at cancelled orders.
 // Time Complexity: O(1) - direct access.
 // Space Complexity: O(n) - kung saan n ay bilang ng completed orders.
-export const orderLogsDetails = [];
+export { orderLogsDetails } from "../general/orderStore.js";
 
-// Nagdadagdag ng completed order sa logs (DSA manual index assignment nang walang .push()).
-// Time Complexity: O(1) - direct index assignment sa dulo ng array.
-// Space Complexity: O(1) - walang karagdagang memory allocation bukod sa pag-store ng order reference.
+const expandedLogOrders = [];
+
+// Nagdadagdag ng completed order sa logs
+// Time Complexity: O(1)
+// Space Complexity: O(1)
 export function addOrderLog(order){
     orderLogsDetails[orderLogsDetails.length] = order;
 }
@@ -18,6 +22,8 @@ export function addOrderLog(order){
 function buildLogRows(order, index){
     let html = "";
     const rowCount = order.orderedItems.length;
+    const detailsId = `log-details-${index}`;
+    const isOpen = indexOfValue(expandedLogOrders, order.orderId) >= 0;
 
     for(let itemIndex = 0; itemIndex < order.orderedItems.length; itemIndex++){
         const item = order.orderedItems[itemIndex];
@@ -25,21 +31,23 @@ function buildLogRows(order, index){
 
         if(itemIndex === 0){
             html += "<td rowspan=\"" + rowCount + "\">" + (index + 1) + "</td>";
-            html += "<td rowspan=\"" + rowCount + "\"><b>" + order.orderId + "</b></td>";
+            html += `<td rowspan="${rowCount}"><button type="button" class="orderDetailsToggle" data-log-details="${escapeHTML(order.orderId)}" aria-expanded="${isOpen}" aria-controls="${detailsId}" aria-label="${isOpen ? "Hide" : "Show"} details for ${escapeHTML(order.orderId)}">${isOpen ? "&#9662;" : "&#9656;"}</button> <b>${escapeHTML(order.orderId)}</b></td>`;
         }
 
-        html += "<td>" + item.cupDetails.cupName + "</td>";
-        html += "<td>" + item.quantity + "</td>";
+        html += "<td>" + escapeHTML(item.cupDetails.cupName) + "</td>";
+        html += "<td>" + escapeHTML(item.quantity) + "</td>";
         html += "<td>" + formatToppings(item.selectedToppings) + "</td>";
-        html += "<td>Php " + item.lineTotal + "</td>";
+        html += "<td>Php " + escapeHTML(item.lineTotal) + "</td>";
 
         if(itemIndex === 0){
-            html += "<td rowspan=\"" + rowCount + "\">" + (order.paymentMethod || order.paymentStatus) + "</td>";
-            html += "<td rowspan=\"" + rowCount + "\">" + order.createdAt + "</td>";
+            html += "<td rowspan=\"" + rowCount + "\">" + escapeHTML(order.paymentMethod || order.paymentStatus) + "<br><small>" + escapeHTML(order.paymentStatus) + "</small></td>";
+            html += "<td rowspan=\"" + rowCount + "\"><span class=\"statusBadge\">" + escapeHTML(order.orderStatus) + "</span></td>";
         }
 
         html += "</tr>";
     }
+
+    html += `<tr id="${detailsId}" class="orderDetailsRow"${isOpen ? "" : " hidden"}><td colspan="8"><dl class="orderDetailsContent"><div class="orderDetail"><dt>Order type</dt><dd>${escapeHTML(getOrderType(order))}</dd></div><div class="orderDetail"><dt>Order date</dt><dd>${escapeHTML(order.createdAt)}</dd></div></dl></td></tr>`;
 
     return html;
 }
@@ -48,17 +56,17 @@ function buildLogRows(order, index){
 // Time Complexity: O(n^2) - nested loop sa pag-ikot sa lahat ng orders at bawat item.
 // Space Complexity: O(n) - lumilikha ng buong table HTML string.
 function buildLogsTable(logs){
-    let html = "<table class=\"orderSummaryTable queueTable\">";
+    let html = "<div class=\"queueTableWrap\"><table class=\"orderSummaryTable queueTable\">";
     html += "<thead><tr>";
     html += "<th>No.</th><th>Order ID</th><th>Cup Size</th><th>Quantity</th>";
-    html += "<th>Toppings</th><th>Total</th><th>Mode of Payment</th><th>Order Date</th>";
+    html += "<th>Toppings</th><th>Total</th><th>Mode of Payment</th><th>Status</th>";
     html += "</tr></thead><tbody>";
 
     for(let i = 0; i < logs.length; i++){
         html += buildLogRows(logs[i], i);
     }
 
-    html += "</tbody></table>";
+    html += "</tbody></table></div>";
     return html;
 }
 
@@ -71,16 +79,34 @@ export function renderOrderLogs(){
 
     if(!container) return;
 
-    if(orderLogsDetails.length === 0){
-        container.innerHTML = "<p>No completed orders yet.</p>";
+    const branchLogs = [];
+    for(let i = 0; i < orderLogsDetails.length; i++){
+        const order = orderLogsDetails[i];
+        if(getOrderBranch(order) === getActiveCashierBranch()) branchLogs[branchLogs.length] = order;
+    }
+    if(branchLogs.length === 0){
+        container.innerHTML = "<p>No transaction logs yet.</p>";
         if(countText) countText.textContent = "";
         return;
     }
 
     if(countText){
-        countText.textContent = "Showing " + orderLogsDetails.length + " completed order" + (orderLogsDetails.length > 1 ? "s" : "") + ".";
+        countText.textContent = "Showing " + branchLogs.length + " transaction" + (branchLogs.length > 1 ? "s" : "") + ".";
     }
 
-    container.innerHTML = buildLogsTable(orderLogsDetails);
+    container.innerHTML = buildLogsTable(branchLogs);
 }
 
+export function initOrderLogs(){
+    const container = getElement("#orderLogsContainer");
+    if(!container) return;
+    container.addEventListener("click", event => {
+        const toggle = event.target.closest("button[data-log-details]");
+        if(!toggle || !container.contains(toggle)) return;
+        const orderId = toggle.dataset.logDetails;
+        const expandedIndex = indexOfValue(expandedLogOrders, orderId);
+        if(expandedIndex >= 0) removeItemAt(expandedLogOrders, expandedIndex);
+        else expandedLogOrders[expandedLogOrders.length] = orderId;
+        renderOrderLogs();
+    });
+}

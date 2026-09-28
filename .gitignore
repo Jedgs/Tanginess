@@ -1,0 +1,7 @@
+# Local tests
+/tests/
+
+# Word and PDF documents
+*.doc
+*.docx
+*.pdf
